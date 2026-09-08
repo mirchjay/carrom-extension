@@ -22,12 +22,32 @@
         <label for="strikerPos">Baseline Position:</label>
         <input type="range" id="strikerPos" min="120" max="380" value="250">
       </div>
-      <button id="resetBtn">Restart</button>
+      <div class="button-group">
+        <button id="rulesBtn">Rules</button>
+        <button id="resetBtn">Restart</button>
+      </div>
     </div>
 
     <p class="instructions">
-      <strong>How to play:</strong> Use the slider to position your striker. Click & drag backward on the board to aim and set power, then release to shoot!
+      <strong>How to play:</strong> Position your striker with the slider. Click & drag backward on the board to aim, then release to shoot!
     </p>
+
+    <!-- Rules Modal -->
+    <div id="rulesModal" class="modal hidden">
+      <div class="modal-content">
+        <span id="closeRules" class="close-btn">&times;</span>
+        <h3>Carrom Rules & Guide</h3>
+        <ul>
+          <li><b>Objective:</b> Clear all pieces from the board to achieve the highest possible score.</li>
+          <li><b>White Coin:</b> 10 Points</li>
+          <li><b>Black Coin:</b> 5 Points</li>
+          <li><b>Queen (Red Coin):</b> 50 Points</li>
+          <li><b>Foul Penalty:</b> If the striker falls into a pocket, you lose <b>10 Points</b>.</li>
+          <li><b>Aim & Power:</b> Click and drag <i>backward</i> from the striker to aim and charge power. Release to shoot.</li>
+          <li><b>Reposition:</b> Use the slider below the board to move your striker along the baseline before shooting.</li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   <script src="game.js"></script>

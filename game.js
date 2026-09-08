@@ -4,6 +4,9 @@ const scoreEl = document.getElementById('score');
 const remainingEl = document.getElementById('remaining');
 const strikerSlider = document.getElementById('strikerPos');
 const resetBtn = document.getElementById('resetBtn');
+const rulesBtn = document.getElementById('rulesBtn');
+const rulesModal = document.getElementById('rulesModal');
+const closeRules = document.getElementById('closeRules');
 
 const BOARD_SIZE = 500;
 const BORDER_MARGIN = 25;
@@ -404,6 +407,21 @@ window.addEventListener('mouseup', () => {
 
 resetBtn.addEventListener('click', () => {
   initGame();
+});
+
+// Rules Modal Events
+rulesBtn.addEventListener('click', () => {
+  rulesModal.classList.remove('hidden');
+});
+
+closeRules.addEventListener('click', () => {
+  rulesModal.classList.add('hidden');
+});
+
+rulesModal.addEventListener('click', (e) => {
+  if (e.target === rulesModal) {
+    rulesModal.classList.add('hidden');
+  }
 });
 
 // Start Game
