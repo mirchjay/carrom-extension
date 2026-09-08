@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Carrom</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <div id="header">
+      <h2>Carrom 2D</h2>
+      <div id="score-board">
+        <span>Score: <b id="score">0</b></span>
+        <span>Remaining: <b id="remaining">19</b></span>
+      </div>
+    </div>
+
+    <canvas id="carromCanvas" width="500" height="500"></canvas>
+
+    <div id="controls">
+      <div class="control-group">
+        <label for="strikerPos">Baseline Position:</label>
+        <input type="range" id="strikerPos" min="120" max="380" value="250">
+      </div>
+      <button id="resetBtn">Restart</button>
+    </div>
+
+    <p class="instructions">
+      <strong>How to play:</strong> Use the slider to position your striker. Click & drag backward on the board to aim and set power, then release to shoot!
+    </p>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

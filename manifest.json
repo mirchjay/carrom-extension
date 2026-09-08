@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Carrom Singleplayer",
+  "version": "1.0",
+  "description": "Play a 2D singleplayer Carrom game right from your browser extensions!",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": []
+}
