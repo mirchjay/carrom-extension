@@ -20,7 +20,13 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 #header h2 {
@@ -29,14 +35,44 @@ body {
   color: #f39c12;
 }
 
-#score-board {
-  display: flex;
-  gap: 15px;
-  font-size: 14px;
+#modeSelect {
+  background-color: #34495e;
+  color: #ecf0f1;
+  border: 1px solid #7f8c8d;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
 }
 
-#score-board b {
+.badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  background-color: #27ae60;
+  color: white;
+  transition: all 0.3s;
+}
+
+.score-board {
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  font-size: 13px;
+  margin-bottom: 8px;
+  background: #1a252f;
+  padding: 6px 0;
+  border-radius: 4px;
+}
+
+.score-board b {
   color: #2ecc71;
+}
+
+.score-board.hidden, .modal.hidden, .badge.hidden {
+  display: none !important;
 }
 
 canvas {
@@ -105,7 +141,7 @@ button {
   color: #bdc3c7;
 }
 
-/* Rules Modal Overlay */
+/* Rules Modal */
 .modal {
   position: absolute;
   top: 0;
@@ -118,10 +154,6 @@ button {
   align-items: center;
   border-radius: 8px;
   z-index: 10;
-}
-
-.modal.hidden {
-  display: none;
 }
 
 .modal-content {
@@ -150,7 +182,7 @@ button {
 }
 
 .modal-content li {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .close-btn {

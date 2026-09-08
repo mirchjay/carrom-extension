@@ -8,11 +8,25 @@
 <body>
   <div id="game-container">
     <div id="header">
-      <h2>Carrom 2D</h2>
-      <div id="score-board">
-        <span>Score: <b id="score">0</b></span>
-        <span>Remaining: <b id="remaining">19</b></span>
+      <div class="title-group">
+        <h2>Carrom 2D</h2>
+        <select id="modeSelect">
+          <option value="single">Singleplayer</option>
+          <option value="multi">Pass & Play (2P)</option>
+        </select>
       </div>
+      <div id="turn-badge" class="badge hidden">Player 1's Turn</div>
+    </div>
+
+    <!-- Dynamic Scoreboards -->
+    <div id="single-score-board" class="score-board">
+      <span>Score: <b id="score">0</b></span>
+      <span>Remaining: <b id="remaining">19</b></span>
+    </div>
+
+    <div id="multi-score-board" class="score-board hidden">
+      <span id="p1-score-box">P1 (White): <b id="p1Score">0</b></span>
+      <span id="p2-score-box">P2 (Black): <b id="p2Score">0</b></span>
     </div>
 
     <canvas id="carromCanvas" width="500" height="500"></canvas>
@@ -29,7 +43,7 @@
     </div>
 
     <p class="instructions">
-      <strong>How to play:</strong> Position your striker with the slider. Click & drag backward on the board to aim, then release to shoot!
+      <strong>How to play:</strong> Drag backward from the striker to aim and shoot. In 2P mode, players alternate top & bottom baselines.
     </p>
 
     <!-- Rules Modal -->
@@ -38,13 +52,12 @@
         <span id="closeRules" class="close-btn">&times;</span>
         <h3>Carrom Rules & Guide</h3>
         <ul>
-          <li><b>Objective:</b> Clear all pieces from the board to achieve the highest possible score.</li>
-          <li><b>White Coin:</b> 10 Points</li>
-          <li><b>Black Coin:</b> 5 Points</li>
-          <li><b>Queen (Red Coin):</b> 50 Points</li>
-          <li><b>Foul Penalty:</b> If the striker falls into a pocket, you lose <b>10 Points</b>.</li>
-          <li><b>Aim & Power:</b> Click and drag <i>backward</i> from the striker to aim and charge power. Release to shoot.</li>
-          <li><b>Reposition:</b> Use the slider below the board to move your striker along the baseline before shooting.</li>
+          <li><b>Singleplayer:</b> Pocket all pieces for high score.</li>
+          <li><b>Pass & Play (2P):</b> Player 1 (White - 10 pts) vs Player 2 (Black - 5 pts).</li>
+          <li><b>Queen (Red):</b> Worth 50 Points to whoever pockets it.</li>
+          <li><b>Turn Rules (2P):</b> Pocketing your own color gives you another turn. Missing or pocketing opponent's coin switches turn.</li>
+          <li><b>Foul Penalty:</b> Pocketing striker loses <b>10 Points</b> and ends turn.</li>
+          <li><b>Aiming:</b> Drag backward to set direction and power, then release to shoot.</li>
         </ul>
       </div>
     </div>

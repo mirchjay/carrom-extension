@@ -2,11 +2,18 @@ const canvas = document.getElementById('carromCanvas');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const remainingEl = document.getElementById('remaining');
+const p1ScoreEl = document.getElementById('p1Score');
+const p2ScoreEl = document.getElementById('p2Score');
 const strikerSlider = document.getElementById('strikerPos');
 const resetBtn = document.getElementById('resetBtn');
 const rulesBtn = document.getElementById('rulesBtn');
 const rulesModal = document.getElementById('rulesModal');
 const closeRules = document.getElementById('closeRules');
+const modeSelect = document.getElementById('modeSelect');
+const turnBadge = document.getElementById('turn-badge');
+
+const singleBoard = document.getElementById('single-score-board');
+const multiBoard = document.getElementById('multi-score-board');
 
 const BOARD_SIZE = 500;
 const BORDER_MARGIN = 25;
@@ -14,11 +21,20 @@ const POCKET_RADIUS = 20;
 const COIN_RADIUS = 10;
 const STRIKER_RADIUS = 14;
 
-let score = 0;
+let gameMode = 'single'; // 'single' or 'multi'
+let currentPlayer = 1; // 1 (White, Bottom) or 2 (Black, Top)
+let p1Score = 0;
+let p2Score = 0;
+let singleScore = 0;
+
 let gameState = 'AIMING'; // AIMING, MOVING, GAMEOVER
 let isDragging = false;
 let dragStart = { x: 0, y: 0 };
 let dragCurrent = { x: 0, y: 0 };
+
+// Track shots
+let coinsPocketedThisTurn = [];
+let strikerFouledThisTurn = false;
 
 const pockets = [
   { x: BORDER_MARGIN + 5, y: BORDER_MARGIN + 5 },
@@ -34,7 +50,7 @@ class Piece {
     this.vx = 0;
     this.vy = 0;
     this.radius = radius;
-    this.type = type;
+    this.type = type; // 'white', 'black', 'queen', 'striker'
     this.color = color;
     this.scoreValue = scoreValue;
     this.mass = mass;
@@ -47,7 +63,7 @@ class Piece {
     this.x += this.vx;
     this.y += this.vy;
 
-    // Apply Friction
+    // Friction
     this.vx *= 0.982;
     this.vy *= 0.982;
 
@@ -80,7 +96,6 @@ class Piece {
     ctx.strokeStyle = '#1a1a1a';
     ctx.stroke();
 
-    // Inner ring decoration
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
     ctx.strokeStyle = (this.type === 'black') ? '#555' : '#888';
@@ -93,22 +108,45 @@ class Piece {
 let pieces = [];
 let striker;
 
+function getBaselineY() {
+  return (gameMode === 'multi' && currentPlayer === 2) ? 100 : 400;
+}
+
+function updateTurnBadge() {
+  if (gameMode === 'multi') {
+    turnBadge.classList.remove('hidden');
+    turnBadge.textContent = `Player ${currentPlayer}'s Turn (${currentPlayer === 1 ? 'White' : 'Black'})`;
+    turnBadge.style.backgroundColor = (currentPlayer === 1) ? '#27ae60' : '#2980b9';
+  } else {
+    turnBadge.classList.add('hidden');
+  }
+}
+
 function initGame() {
-  score = 0;
-  scoreEl.textContent = score;
+  singleScore = 0;
+  p1Score = 0;
+  p2Score = 0;
+  currentPlayer = 1;
   gameState = 'AIMING';
+
+  scoreEl.textContent = singleScore;
+  p1ScoreEl.textContent = p1Score;
+  p2ScoreEl.textContent = p2Score;
+
   strikerSlider.value = 250;
   strikerSlider.disabled = false;
+
+  updateTurnBadge();
 
   pieces = [];
 
   // Striker
-  striker = new Piece(250, 400, STRIKER_RADIUS, 'striker', '#00bfff', 0, 2.2);
+  striker = new Piece(250, getBaselineY(), STRIKER_RADIUS, 'striker', '#00bfff', 0, 2.2);
 
-  // Queen (Center)
+  // Queen
   pieces.push(new Piece(250, 250, COIN_RADIUS, 'queen', '#e74c3c', 50, 1.0));
 
-  // Inner ring (6 coins)
+  // Inner ring
   const innerColors = ['#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50'];
   const innerTypes = ['white', 'black', 'white', 'black', 'white', 'black'];
   const innerScores = [10, 5, 10, 5, 10, 5];
@@ -120,7 +158,7 @@ function initGame() {
     pieces.push(new Piece(x, y, COIN_RADIUS, innerTypes[i], innerColors[i], innerScores[i], 1.0));
   }
 
-  // Outer ring (12 coins)
+  // Outer ring
   for (let i = 0; i < 12; i++) {
     const angle = (i * 30 + 15) * Math.PI / 180;
     const x = 250 + Math.cos(angle) * 42;
@@ -146,7 +184,6 @@ function updateRemainingCount() {
   }
 }
 
-// 2D Elastic Circle Collisions
 function resolveCollisions() {
   const allObjects = [...pieces.filter(p => p.active), striker];
 
@@ -164,14 +201,12 @@ function resolveCollisions() {
         const nx = dx / (dist || 1);
         const ny = dy / (dist || 1);
 
-        // Separate circles to prevent sticking
         const overlap = minDist - dist;
         p1.x -= nx * overlap * 0.5;
         p1.y -= ny * overlap * 0.5;
         p2.x += nx * overlap * 0.5;
         p2.y += ny * overlap * 0.5;
 
-        // Tangent
         const tx = -ny;
         const ty = nx;
 
@@ -204,25 +239,69 @@ function checkPockets() {
       const dist = Math.hypot(obj.x - pocket.x, obj.y - pocket.y);
       if (dist < POCKET_RADIUS + 2) {
         if (obj === striker) {
-          // Striker Foul (-10 points)
-          score = Math.max(0, score - 10);
-          scoreEl.textContent = score;
+          strikerFouledThisTurn = true;
           obj.vx = 0;
           obj.vy = 0;
           obj.x = parseFloat(strikerSlider.value);
-          obj.y = 400;
+          obj.y = getBaselineY();
         } else {
-          // Coin potted
           obj.active = false;
           obj.vx = 0;
           obj.vy = 0;
-          score += obj.scoreValue;
-          scoreEl.textContent = score;
+          coinsPocketedThisTurn.push(obj);
           updateRemainingCount();
         }
       }
     });
   });
+}
+
+function evaluateTurn() {
+  if (gameMode === 'single') {
+    if (strikerFouledThisTurn) {
+      singleScore = Math.max(0, singleScore - 10);
+    }
+    coinsPocketedThisTurn.forEach(coin => {
+      singleScore += coin.scoreValue;
+    });
+    scoreEl.textContent = singleScore;
+  } else {
+    // Pass & Play (2 Player)
+    let extraTurn = false;
+
+    if (strikerFouledThisTurn) {
+      if (currentPlayer === 1) p1Score = Math.max(0, p1Score - 10);
+      else p2Score = Math.max(0, p2Score - 10);
+    }
+
+    coinsPocketedThisTurn.forEach(coin => {
+      if (coin.type === 'queen') {
+        if (currentPlayer === 1) p1Score += 50;
+        else p2Score += 50;
+        extraTurn = true;
+      } else if (coin.type === 'white') {
+        p1Score += 10;
+        if (currentPlayer === 1) extraTurn = true;
+      } else if (coin.type === 'black') {
+        p2Score += 5;
+        if (currentPlayer === 2) extraTurn = true;
+      }
+    });
+
+    p1ScoreEl.textContent = p1Score;
+    p2ScoreEl.textContent = p2Score;
+
+    // Switch turns if no valid coin potted or foul occurred
+    if (strikerFouledThisTurn || !extraTurn) {
+      currentPlayer = (currentPlayer === 1) ? 2 : 1;
+    }
+
+    updateTurnBadge();
+  }
+
+  // Reset turn tracking
+  coinsPocketedThisTurn = [];
+  strikerFouledThisTurn = false;
 }
 
 function updatePhysics() {
@@ -234,18 +313,18 @@ function updatePhysics() {
     checkPockets();
   }
 
-  // Check if pieces stopped moving
   if (gameState === 'MOVING') {
     let moving = Math.hypot(striker.vx, striker.vy) > 0.1 ||
                  pieces.some(p => p.active && Math.hypot(p.vx, p.vy) > 0.1);
 
     if (!moving) {
+      evaluateTurn();
       gameState = 'AIMING';
       strikerSlider.disabled = false;
       striker.vx = 0;
       striker.vy = 0;
       striker.x = parseFloat(strikerSlider.value);
-      striker.y = 400;
+      striker.y = getBaselineY();
     }
   }
 }
@@ -253,7 +332,7 @@ function updatePhysics() {
 function drawBoard() {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
 
-  // Outer Wooden Frame
+  // Outer Frame
   ctx.fillStyle = '#4a2e18';
   ctx.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
 
@@ -284,39 +363,38 @@ function drawBoard() {
   ctx.fillStyle = '#e74c3c';
   ctx.fill();
 
-  // Baseline rendering
-  const drawBaseline = (y) => {
+  // Baselines
+  const drawBaseline = (y, active) => {
     ctx.beginPath();
     ctx.moveTo(110, y);
     ctx.lineTo(390, y);
-    ctx.strokeStyle = '#c0392b';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = active ? '#e74c3c' : '#bdc3c7';
+    ctx.lineWidth = active ? 2 : 1;
     ctx.stroke();
 
     [110, 390].forEach(x => {
       ctx.beginPath();
       ctx.arc(x, y, 10, 0, Math.PI * 2);
-      ctx.fillStyle = '#e74c3c';
+      ctx.fillStyle = active ? '#e74c3c' : '#bdc3c7';
       ctx.fill();
       ctx.stroke();
     });
   };
 
-  drawBaseline(400); // Bottom baseline
-  drawBaseline(100); // Top baseline
+  drawBaseline(400, gameMode === 'single' || currentPlayer === 1);
+  drawBaseline(100, gameMode === 'multi' && currentPlayer === 2);
 
-  // Draw Pieces
+  // Pieces
   pieces.forEach(p => p.draw());
   striker.draw();
 
-  // Aim Vector Visualizer
+  // Aim Visualizer
   if (isDragging && gameState === 'AIMING') {
     const dx = dragStart.x - dragCurrent.x;
     const dy = dragStart.y - dragCurrent.y;
     const power = Math.min(Math.hypot(dx, dy), 120);
     const angle = Math.atan2(dy, dx);
 
-    // Aim Trajectory Line
     ctx.beginPath();
     ctx.moveTo(striker.x, striker.y);
     ctx.lineTo(striker.x + Math.cos(angle) * power * 1.5, striker.y + Math.sin(angle) * power * 1.5);
@@ -326,7 +404,6 @@ function drawBoard() {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Elastic Pull Line
     ctx.beginPath();
     ctx.moveTo(striker.x, striker.y);
     ctx.lineTo(dragCurrent.x, dragCurrent.y);
@@ -335,17 +412,29 @@ function drawBoard() {
     ctx.stroke();
   }
 
-  // Game Over Overlay
+  // Game Over
   if (gameState === 'GAMEOVER') {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
     ctx.fillStyle = '#f39c12';
-    ctx.font = 'bold 30px Arial';
+    ctx.font = 'bold 28px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('BOARD CLEARED!', 250, 230);
-    ctx.fillStyle = '#fff';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Final Score: ${score}`, 250, 270);
+
+    if (gameMode === 'single') {
+      ctx.fillText('BOARD CLEARED!', 250, 230);
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px Arial';
+      ctx.fillText(`Final Score: ${singleScore}`, 250, 270);
+    } else {
+      let winnerText = "IT'S A TIE!";
+      if (p1Score > p2Score) winnerText = 'PLAYER 1 WINS!';
+      else if (p2Score > p1Score) winnerText = 'PLAYER 2 WINS!';
+
+      ctx.fillText(winnerText, 250, 220);
+      ctx.fillStyle = '#fff';
+      ctx.font = '18px Arial';
+      ctx.fillText(`P1 (White): ${p1Score}  |  P2 (Black): ${p2Score}`, 250, 260);
+    }
   }
 }
 
@@ -355,7 +444,19 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-// Controls & Interaction
+// Mode Selection Handler
+modeSelect.addEventListener('change', (e) => {
+  gameMode = e.target.value;
+  if (gameMode === 'single') {
+    singleBoard.classList.remove('hidden');
+    multiBoard.classList.add('hidden');
+  } else {
+    singleBoard.classList.add('hidden');
+    multiBoard.classList.remove('hidden');
+  }
+  initGame();
+});
+
 strikerSlider.addEventListener('input', (e) => {
   if (gameState === 'AIMING') {
     striker.x = parseFloat(e.target.value);
@@ -366,21 +467,15 @@ canvas.addEventListener('mousedown', (e) => {
   if (gameState !== 'AIMING') return;
 
   const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-
   isDragging = true;
-  dragStart = { x: mouseX, y: mouseY };
-  dragCurrent = { x: mouseX, y: mouseY };
+  dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 });
 
 canvas.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
   const rect = canvas.getBoundingClientRect();
-  dragCurrent = {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  };
+  dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 });
 
 window.addEventListener('mouseup', () => {
@@ -409,7 +504,6 @@ resetBtn.addEventListener('click', () => {
   initGame();
 });
 
-// Rules Modal Events
 rulesBtn.addEventListener('click', () => {
   rulesModal.classList.remove('hidden');
 });
