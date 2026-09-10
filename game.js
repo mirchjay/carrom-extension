@@ -29,7 +29,6 @@ let singleScore = 0;
 
 let gameState = 'AIMING'; // AIMING, MOVING, GAMEOVER
 let isDragging = false;
-let dragStart = { x: 0, y: 0 };
 let dragCurrent = { x: 0, y: 0 };
 
 // Track shots
@@ -146,7 +145,7 @@ function initGame() {
   // Queen
   pieces.push(new Piece(250, 250, COIN_RADIUS, 'queen', '#e74c3c', 50, 1.0));
 
-  // Inner ring
+  // Inner ring (6 coins)
   const innerColors = ['#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50'];
   const innerTypes = ['white', 'black', 'white', 'black', 'white', 'black'];
   const innerScores = [10, 5, 10, 5, 10, 5];
@@ -158,7 +157,7 @@ function initGame() {
     pieces.push(new Piece(x, y, COIN_RADIUS, innerTypes[i], innerColors[i], innerScores[i], 1.0));
   }
 
-  // Outer ring
+  // Outer ring (12 coins)
   for (let i = 0; i < 12; i++) {
     const angle = (i * 30 + 15) * Math.PI / 180;
     const x = 250 + Math.cos(angle) * 42;
@@ -329,6 +328,27 @@ function updatePhysics() {
   }
 }
 
+// Canvas Coordinates Calculation
+function getCanvasCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+// Pure Free Aim Vector Calculation (No Snapping / No Angle Locks)
+function getAimVector() {
+  const dx = striker.x - dragCurrent.x;
+  const dy = striker.y - dragCurrent.y;
+  const power = Math.min(Math.hypot(dx, dy), 120);
+  const angle = Math.atan2(dy, dx);
+
+  return { dx, dy, power, angle };
+}
+
 function drawBoard() {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
 
@@ -384,26 +404,28 @@ function drawBoard() {
   drawBaseline(400, gameMode === 'single' || currentPlayer === 1);
   drawBaseline(100, gameMode === 'multi' && currentPlayer === 2);
 
-  // Pieces
+  // Pieces & Striker
   pieces.forEach(p => p.draw());
   striker.draw();
 
-  // Aim Visualizer
+  // Aim Trajectory & Drag Handle
   if (isDragging && gameState === 'AIMING') {
-    const dx = dragStart.x - dragCurrent.x;
-    const dy = dragStart.y - dragCurrent.y;
-    const power = Math.min(Math.hypot(dx, dy), 120);
-    const angle = Math.atan2(dy, dx);
+    const { power, angle } = getAimVector();
 
+    // Trajectory Line
     ctx.beginPath();
     ctx.moveTo(striker.x, striker.y);
-    ctx.lineTo(striker.x + Math.cos(angle) * power * 1.5, striker.y + Math.sin(angle) * power * 1.5);
-    ctx.strokeStyle = 'rgba(231, 76, 60, 0.8)';
+    ctx.lineTo(
+      striker.x + Math.cos(angle) * power * 1.5,
+      striker.y + Math.sin(angle) * power * 1.5
+    );
+    ctx.strokeStyle = 'rgba(231, 76, 60, 0.85)';
     ctx.lineWidth = 3;
     ctx.setLineDash([5, 5]);
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Elastic Drag Line
     ctx.beginPath();
     ctx.moveTo(striker.x, striker.y);
     ctx.lineTo(dragCurrent.x, dragCurrent.y);
@@ -412,7 +434,7 @@ function drawBoard() {
     ctx.stroke();
   }
 
-  // Game Over
+  // Game Over Overlay
   if (gameState === 'GAMEOVER') {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
@@ -463,19 +485,16 @@ strikerSlider.addEventListener('input', (e) => {
   }
 });
 
+// Canvas Mouse Controls
 canvas.addEventListener('mousedown', (e) => {
   if (gameState !== 'AIMING') return;
-
-  const rect = canvas.getBoundingClientRect();
   isDragging = true;
-  dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  dragCurrent = getCanvasCoords(e);
 });
 
 canvas.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
-  const rect = canvas.getBoundingClientRect();
-  dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  dragCurrent = getCanvasCoords(e);
 });
 
 window.addEventListener('mouseup', () => {
@@ -483,12 +502,9 @@ window.addEventListener('mouseup', () => {
   isDragging = false;
 
   if (gameState === 'AIMING') {
-    const dx = dragStart.x - dragCurrent.x;
-    const dy = dragStart.y - dragCurrent.y;
-    const power = Math.min(Math.hypot(dx, dy), 120);
+    const { power, angle } = getAimVector();
 
     if (power > 5) {
-      const angle = Math.atan2(dy, dx);
       const forceMultiplier = 0.18;
 
       striker.vx = Math.cos(angle) * power * forceMultiplier;
