@@ -282,7 +282,7 @@ function evaluateTurn() {
         p1Score += 10;
         if (currentPlayer === 1) extraTurn = true;
       } else if (coin.type === 'black') {
-        p2Score += 5;
+        p2Score += 10; // Updated: Equal 10 points for black chips in 2P mode
         if (currentPlayer === 2) extraTurn = true;
       }
     });
@@ -339,7 +339,7 @@ function getCanvasCoords(e) {
   };
 }
 
-// Pure Free Aim Vector Calculation (No Snapping / No Angle Locks)
+// Pure Free Aim Vector Calculation
 function getAimVector() {
   const dx = striker.x - dragCurrent.x;
   const dy = striker.y - dragCurrent.y;
