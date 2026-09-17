@@ -3,7 +3,7 @@ html, body {
   margin: 0;
   padding: 10px;
   box-sizing: border-box;
-  overflow: hidden; /* Prevent vertical popup scrolling */
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: #1e1e1e;
   color: #f0f0f0;
@@ -62,7 +62,6 @@ select {
   border-radius: 6px;
 }
 
-/* Visually scale native 500x500 canvas to fit popup height */
 #carromCanvas {
   width: 350px;
   height: 350px;
@@ -125,7 +124,6 @@ button#aimAssistBtn.active {
   display: none !important;
 }
 
-/* Compact Modal Overlay */
 .modal {
   position: absolute;
   top: 0;

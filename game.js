@@ -1,9 +1,9 @@
 const canvas = document.getElementById('carromCanvas');
 const ctx = canvas.getContext('2d');
-const scoreEl = document.getElementById('score');
-const remainingEl = document.getElementById('remaining');
 const p1ScoreEl = document.getElementById('p1Score');
 const p2ScoreEl = document.getElementById('p2Score');
+const p1LabelEl = document.getElementById('p1Label');
+const p2LabelEl = document.getElementById('p2Label');
 const strikerSlider = document.getElementById('strikerPos');
 const resetBtn = document.getElementById('resetBtn');
 const rulesBtn = document.getElementById('rulesBtn');
@@ -13,30 +13,27 @@ const modeSelect = document.getElementById('modeSelect');
 const turnBadge = document.getElementById('turn-badge');
 const aimAssistBtn = document.getElementById('aimAssistBtn');
 
-const singleBoard = document.getElementById('single-score-board');
-const multiBoard = document.getElementById('multi-score-board');
-
 const BOARD_SIZE = 500;
 const BORDER_MARGIN = 25;
 const POCKET_RADIUS = 20;
 const COIN_RADIUS = 10;
 const STRIKER_RADIUS = 14;
 
-let gameMode = 'single'; // 'single' or 'multi'
-let currentPlayer = 1; // 1 (White, Bottom) or 2 (Black, Top)
+let gameMode = 'single'; // 'single' (1P vs AI) or 'multi' (2P)
+let currentPlayer = 1; // 1 (White, Bottom) or 2 (Black, Top AI/P2)
 let p1Score = 0;
 let p2Score = 0;
-let singleScore = 0;
 
 let gameState = 'AIMING'; // AIMING, MOVING, GAMEOVER
 let isDragging = false;
 let dragCurrent = { x: 0, y: 0 };
+let aiThinking = false;
 
 // Aim Assist State
 let showAimAssist = false;
 let suggestedShot = null;
 
-// Shot Tracking
+// Turn Tracking
 let coinsPocketedThisTurn = [];
 let strikerFouledThisTurn = false;
 
@@ -113,28 +110,31 @@ let pieces = [];
 let striker;
 
 function getBaselineY() {
-  return (gameMode === 'multi' && currentPlayer === 2) ? 100 : 400;
+  return (currentPlayer === 2) ? 100 : 400;
 }
 
 function updateTurnBadge() {
-  if (gameMode === 'multi') {
-    turnBadge.classList.remove('hidden');
+  if (gameMode === 'single') {
+    p1LabelEl.textContent = 'You (White)';
+    p2LabelEl.textContent = 'CPU (Black)';
+    turnBadge.textContent = (currentPlayer === 1) ? 'Your Turn' : "Computer's Turn";
+    turnBadge.style.backgroundColor = (currentPlayer === 1) ? '#27ae60' : '#e74c3c';
+  } else {
+    p1LabelEl.textContent = 'P1 (White)';
+    p2LabelEl.textContent = 'P2 (Black)';
     turnBadge.textContent = `Player ${currentPlayer}'s Turn (${currentPlayer === 1 ? 'White' : 'Black'})`;
     turnBadge.style.backgroundColor = (currentPlayer === 1) ? '#27ae60' : '#2980b9';
-  } else {
-    turnBadge.classList.add('hidden');
   }
 }
 
 function initGame() {
-  singleScore = 0;
   p1Score = 0;
   p2Score = 0;
   currentPlayer = 1;
   gameState = 'AIMING';
   suggestedShot = null;
+  aiThinking = false;
 
-  scoreEl.textContent = singleScore;
   p1ScoreEl.textContent = p1Score;
   p2ScoreEl.textContent = p2Score;
 
@@ -154,13 +154,12 @@ function initGame() {
   // Inner ring (6 coins)
   const innerColors = ['#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50'];
   const innerTypes = ['white', 'black', 'white', 'black', 'white', 'black'];
-  const innerScores = [10, 5, 10, 5, 10, 5];
 
   for (let i = 0; i < 6; i++) {
     const angle = (i * 60) * Math.PI / 180;
     const x = 250 + Math.cos(angle) * 21;
     const y = 250 + Math.sin(angle) * 21;
-    pieces.push(new Piece(x, y, COIN_RADIUS, innerTypes[i], innerColors[i], innerScores[i], 1.0));
+    pieces.push(new Piece(x, y, COIN_RADIUS, innerTypes[i], innerColors[i], 10, 1.0));
   }
 
   // Outer ring (12 coins)
@@ -173,19 +172,8 @@ function initGame() {
       x, y, COIN_RADIUS,
       isWhite ? 'white' : 'black',
       isWhite ? '#f5f5dc' : '#2c3e50',
-      isWhite ? 10 : 5,
-      1.0
+      10, 1.0
     ));
-  }
-
-  updateRemainingCount();
-}
-
-function updateRemainingCount() {
-  const activeCoins = pieces.filter(p => p.active).length;
-  remainingEl.textContent = activeCoins;
-  if (activeCoins === 0) {
-    gameState = 'GAMEOVER';
   }
 }
 
@@ -254,7 +242,6 @@ function checkPockets() {
           obj.vx = 0;
           obj.vy = 0;
           coinsPocketedThisTurn.push(obj);
-          updateRemainingCount();
         }
       }
     });
@@ -262,50 +249,120 @@ function checkPockets() {
 }
 
 function evaluateTurn() {
-  if (gameMode === 'single') {
-    if (strikerFouledThisTurn) {
-      singleScore = Math.max(0, singleScore - 10);
-    }
-    coinsPocketedThisTurn.forEach(coin => {
-      singleScore += coin.scoreValue;
-    });
-    scoreEl.textContent = singleScore;
-  } else {
-    // Pass & Play (2 Player)
-    let extraTurn = false;
+  let extraTurn = false;
 
-    if (strikerFouledThisTurn) {
-      if (currentPlayer === 1) p1Score = Math.max(0, p1Score - 10);
-      else p2Score = Math.max(0, p2Score - 10);
-    }
-
-    coinsPocketedThisTurn.forEach(coin => {
-      if (coin.type === 'queen') {
-        if (currentPlayer === 1) p1Score += 50;
-        else p2Score += 50;
-        extraTurn = true;
-      } else if (coin.type === 'white') {
-        p1Score += 10;
-        if (currentPlayer === 1) extraTurn = true;
-      } else if (coin.type === 'black') {
-        p2Score += 10; // Equal 10 points for black pieces in 2P mode
-        if (currentPlayer === 2) extraTurn = true;
-      }
-    });
-
-    p1ScoreEl.textContent = p1Score;
-    p2ScoreEl.textContent = p2Score;
-
-    if (strikerFouledThisTurn || !extraTurn) {
-      currentPlayer = (currentPlayer === 1) ? 2 : 1;
-    }
-
-    updateTurnBadge();
+  if (strikerFouledThisTurn) {
+    if (currentPlayer === 1) p1Score = Math.max(0, p1Score - 10);
+    else p2Score = Math.max(0, p2Score - 10);
   }
 
-  // Reset turn tracking
+  coinsPocketedThisTurn.forEach(coin => {
+    if (coin.type === 'queen') {
+      if (currentPlayer === 1) p1Score += 50;
+      else p2Score += 50;
+      extraTurn = true;
+    } else if (coin.type === 'white') {
+      p1Score += 10;
+      if (currentPlayer === 1) extraTurn = true;
+    } else if (coin.type === 'black') {
+      p2Score += 10;
+      if (currentPlayer === 2) extraTurn = true;
+    }
+  });
+
+  p1ScoreEl.textContent = p1Score;
+  p2ScoreEl.textContent = p2Score;
+
+  if (strikerFouledThisTurn || !extraTurn) {
+    currentPlayer = (currentPlayer === 1) ? 2 : 1;
+  }
+
+  updateTurnBadge();
+
   coinsPocketedThisTurn = [];
   strikerFouledThisTurn = false;
+
+  if (pieces.filter(p => p.active).length === 0) {
+    gameState = 'GAMEOVER';
+  }
+}
+
+// AI Opponent Shot Engine
+function findBestShotForAi() {
+  const activePieces = pieces.filter(p => p.active);
+  const candidates = activePieces.filter(p => p.type === 'black' || p.type === 'queen');
+  if (candidates.length === 0) return null;
+
+  let bestShot = null;
+  let lowestDifficulty = Infinity;
+  const aiY = 100;
+
+  candidates.forEach(piece => {
+    pockets.forEach(pocket => {
+      const dxToPocket = pocket.x - piece.x;
+      const dyToPocket = pocket.y - piece.y;
+      const distToPocket = Math.hypot(dxToPocket, dyToPocket);
+      if (distToPocket === 0) return;
+
+      const dirX = dxToPocket / distToPocket;
+      const dirY = dyToPocket / distToPocket;
+
+      const contactDist = COIN_RADIUS + STRIKER_RADIUS;
+      const ghostX = piece.x - dirX * contactDist;
+      const ghostY = piece.y - dirY * contactDist;
+
+      for (let testX = 120; testX <= 380; testX += 15) {
+        const dxStriker = ghostX - testX;
+        const dyStriker = ghostY - aiY;
+        const distStriker = Math.hypot(dxStriker, dyStriker);
+
+        const strikerDirX = dxStriker / (distStriker || 1);
+        const strikerDirY = dyStriker / (distStriker || 1);
+        const alignment = strikerDirX * dirX + strikerDirY * dirY;
+
+        if (alignment <= 0.15) continue;
+
+        const difficulty = distStriker + distToPocket * 0.5 + (1 - alignment) * 280;
+
+        if (difficulty < lowestDifficulty) {
+          lowestDifficulty = difficulty;
+          bestShot = { strikerX: testX, ghostX, ghostY, dxStriker, dyStriker, distStriker };
+        }
+      }
+    });
+  });
+
+  return bestShot;
+}
+
+function handleAiTurn() {
+  if (aiThinking || gameState !== 'AIMING' || gameMode !== 'single' || currentPlayer !== 2) return;
+
+  aiThinking = true;
+  strikerSlider.disabled = true;
+
+  setTimeout(() => {
+    const shot = findBestShotForAi();
+    if (shot) {
+      striker.x = shot.strikerX;
+      strikerSlider.value = shot.strikerX;
+
+      const forceMultiplier = 0.18;
+      const power = Math.min(shot.distStriker, 115);
+      const angle = Math.atan2(shot.dyStriker, shot.dxStriker);
+
+      striker.vx = Math.cos(angle) * power * forceMultiplier;
+      striker.vy = Math.sin(angle) * power * forceMultiplier;
+    } else {
+      striker.x = 250;
+      strikerSlider.value = 250;
+      striker.vx = (Math.random() - 0.5) * 5;
+      striker.vy = 7;
+    }
+
+    gameState = 'MOVING';
+    aiThinking = false;
+  }, 900);
 }
 
 function updatePhysics() {
@@ -324,16 +381,18 @@ function updatePhysics() {
     if (!moving) {
       evaluateTurn();
       gameState = 'AIMING';
-      strikerSlider.disabled = false;
       striker.vx = 0;
       striker.vy = 0;
       striker.x = parseFloat(strikerSlider.value);
       striker.y = getBaselineY();
+
+      strikerSlider.disabled = (gameMode === 'single' && currentPlayer === 2);
     }
+  } else if (gameState === 'AIMING') {
+    handleAiTurn();
   }
 }
 
-// Canvas Coordinates Calculation
 function getCanvasCoords(e) {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
@@ -344,7 +403,6 @@ function getCanvasCoords(e) {
   };
 }
 
-// Pure Free Aim Vector Calculation
 function getAimVector() {
   const dx = striker.x - dragCurrent.x;
   const dy = striker.y - dragCurrent.y;
@@ -354,17 +412,12 @@ function getAimVector() {
   return { dx, dy, power, angle };
 }
 
-// Calculates optimal trajectory for Aim Assist
 function findBestShot() {
   const activePieces = pieces.filter(p => p.active);
-  let candidates = activePieces;
-
-  if (gameMode === 'multi') {
-    candidates = activePieces.filter(p => {
-      if (p.type === 'queen') return true;
-      return currentPlayer === 1 ? p.type === 'white' : p.type === 'black';
-    });
-  }
+  let candidates = activePieces.filter(p => {
+    if (p.type === 'queen') return true;
+    return currentPlayer === 1 ? p.type === 'white' : p.type === 'black';
+  });
 
   let bestShot = null;
   let lowestDifficulty = Infinity;
@@ -391,7 +444,7 @@ function findBestShot() {
       const strikerDirY = dyStriker / (distStriker || 1);
       const alignment = strikerDirX * dirX + strikerDirY * dirY;
 
-      if (alignment <= 0.15) return; // Skip impossible back-cuts
+      if (alignment <= 0.15) return;
 
       const difficulty = distStriker + distToPocket * 0.6 + (1 - alignment) * 250;
 
@@ -457,17 +510,15 @@ function drawBoard() {
     });
   };
 
-  drawBaseline(400, gameMode === 'single' || currentPlayer === 1);
-  drawBaseline(100, gameMode === 'multi' && currentPlayer === 2);
+  drawBaseline(400, currentPlayer === 1);
+  drawBaseline(100, currentPlayer === 2);
 
-  // Render Aim Assist Line & Ghost Coin
-  if (showAimAssist && gameState === 'AIMING') {
+  // Aim Assist Rendering
+  if (showAimAssist && gameState === 'AIMING' && (gameMode !== 'single' || currentPlayer === 1)) {
     suggestedShot = findBestShot();
 
     if (suggestedShot) {
       ctx.save();
-
-      // Dotted guide line from striker to target impact point
       ctx.beginPath();
       ctx.moveTo(striker.x, striker.y);
       ctx.lineTo(suggestedShot.ghostX, suggestedShot.ghostY);
@@ -476,14 +527,12 @@ function drawBoard() {
       ctx.setLineDash([4, 4]);
       ctx.stroke();
 
-      // Ghost striker circle showing impact point
       ctx.beginPath();
       ctx.arc(suggestedShot.ghostX, suggestedShot.ghostY, STRIKER_RADIUS, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(46, 204, 113, 0.8)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // Projected line from piece to pocket
       ctx.beginPath();
       ctx.moveTo(suggestedShot.piece.x, suggestedShot.piece.y);
       ctx.lineTo(suggestedShot.pocket.x, suggestedShot.pocket.y);
@@ -491,7 +540,6 @@ function drawBoard() {
       ctx.lineWidth = 2;
       ctx.setLineDash([]);
       ctx.stroke();
-
       ctx.restore();
     }
   }
@@ -500,11 +548,10 @@ function drawBoard() {
   pieces.forEach(p => p.draw());
   striker.draw();
 
-  // Aim Trajectory & Drag Handle
+  // Drag Trajectory Line
   if (isDragging && gameState === 'AIMING') {
     const { power, angle } = getAimVector();
 
-    // Trajectory Line
     ctx.beginPath();
     ctx.moveTo(striker.x, striker.y);
     ctx.lineTo(
@@ -517,7 +564,6 @@ function drawBoard() {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Elastic Drag Line
     ctx.beginPath();
     ctx.moveTo(striker.x, striker.y);
     ctx.lineTo(dragCurrent.x, dragCurrent.y);
@@ -528,27 +574,20 @@ function drawBoard() {
 
   // Game Over Overlay
   if (gameState === 'GAMEOVER') {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
     ctx.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
     ctx.fillStyle = '#f39c12';
-    ctx.font = 'bold 28px Arial';
+    ctx.font = 'bold 26px Arial';
     ctx.textAlign = 'center';
 
-    if (gameMode === 'single') {
-      ctx.fillText('BOARD CLEARED!', 250, 230);
-      ctx.fillStyle = '#fff';
-      ctx.font = '20px Arial';
-      ctx.fillText(`Final Score: ${singleScore}`, 250, 270);
-    } else {
-      let winnerText = "IT'S A TIE!";
-      if (p1Score > p2Score) winnerText = 'PLAYER 1 WINS!';
-      else if (p2Score > p1Score) winnerText = 'PLAYER 2 WINS!';
+    let winnerText = "IT'S A TIE!";
+    if (p1Score > p2Score) winnerText = (gameMode === 'single') ? 'YOU WIN!' : 'PLAYER 1 WINS!';
+    else if (p2Score > p1Score) winnerText = (gameMode === 'single') ? 'COMPUTER WINS!' : 'PLAYER 2 WINS!';
 
-      ctx.fillText(winnerText, 250, 220);
-      ctx.fillStyle = '#fff';
-      ctx.font = '18px Arial';
-      ctx.fillText(`P1 (White): ${p1Score}  |  P2 (Black): ${p2Score}`, 250, 260);
-    }
+    ctx.fillText(winnerText, 250, 220);
+    ctx.fillStyle = '#fff';
+    ctx.font = '18px Arial';
+    ctx.fillText(`White: ${p1Score}  |  Black: ${p2Score}`, 250, 260);
   }
 }
 
@@ -558,28 +597,21 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
-// Mode Selection Handler
+// Mode Selector
 modeSelect.addEventListener('change', (e) => {
   gameMode = e.target.value;
-  if (gameMode === 'single') {
-    singleBoard.classList.remove('hidden');
-    multiBoard.classList.add('hidden');
-  } else {
-    singleBoard.classList.add('hidden');
-    multiBoard.classList.remove('hidden');
-  }
   initGame();
 });
 
 strikerSlider.addEventListener('input', (e) => {
-  if (gameState === 'AIMING') {
+  if (gameState === 'AIMING' && (gameMode !== 'single' || currentPlayer === 1)) {
     striker.x = parseFloat(e.target.value);
   }
 });
 
-// Canvas Controls
+// Canvas Interaction
 canvas.addEventListener('mousedown', (e) => {
-  if (gameState !== 'AIMING') return;
+  if (gameState !== 'AIMING' || (gameMode === 'single' && currentPlayer === 2)) return;
   isDragging = true;
   dragCurrent = getCanvasCoords(e);
 });
@@ -598,7 +630,6 @@ window.addEventListener('mouseup', () => {
 
     if (power > 5) {
       const forceMultiplier = 0.18;
-
       striker.vx = Math.cos(angle) * power * forceMultiplier;
       striker.vy = Math.sin(angle) * power * forceMultiplier;
 
@@ -609,31 +640,20 @@ window.addEventListener('mouseup', () => {
   }
 });
 
-// Button Controls
+// Controls
 aimAssistBtn.addEventListener('click', () => {
   showAimAssist = !showAimAssist;
   aimAssistBtn.classList.toggle('active', showAimAssist);
   aimAssistBtn.textContent = showAimAssist ? 'Aim: ON' : 'Aim Assist';
 });
 
-resetBtn.addEventListener('click', () => {
-  initGame();
-});
-
-rulesBtn.addEventListener('click', () => {
-  rulesModal.classList.remove('hidden');
-});
-
-closeRules.addEventListener('click', () => {
-  rulesModal.classList.add('hidden');
-});
-
+resetBtn.addEventListener('click', () => initGame());
+rulesBtn.addEventListener('click', () => rulesModal.classList.remove('hidden'));
+closeRules.addEventListener('click', () => rulesModal.classList.add('hidden'));
 rulesModal.addEventListener('click', (e) => {
-  if (e.target === rulesModal) {
-    rulesModal.classList.add('hidden');
-  }
+  if (e.target === rulesModal) rulesModal.classList.add('hidden');
 });
 
-// Start Game
+// Initialize Game
 initGame();
 gameLoop();

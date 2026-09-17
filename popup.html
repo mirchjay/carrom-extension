@@ -12,22 +12,17 @@
       <div class="title-group">
         <h2>Carrom 2D</h2>
         <select id="modeSelect">
-          <option value="single">Singleplayer</option>
+          <option value="single">1P vs Computer</option>
           <option value="multi">Pass & Play (2P)</option>
         </select>
       </div>
-      <div id="turn-badge" class="badge hidden">Player 1's Turn</div>
+      <div id="turn-badge" class="badge">Your Turn</div>
     </div>
 
-    <!-- Dynamic Scoreboards -->
-    <div id="single-score-board" class="score-board">
-      <span>Score: <b id="score">0</b></span>
-      <span>Remaining: <b id="remaining">19</b></span>
-    </div>
-
-    <div id="multi-score-board" class="score-board hidden">
-      <span id="p1-score-box">P1 (White): <b id="p1Score">0</b></span>
-      <span id="p2-score-box">P2 (Black): <b id="p2Score">0</b></span>
+    <!-- Unified Scoreboard -->
+    <div id="score-board" class="score-board">
+      <span><span id="p1Label">You (White)</span>: <b id="p1Score">0</b></span>
+      <span><span id="p2Label">CPU (Black)</span>: <b id="p2Score">0</b></span>
     </div>
 
     <canvas id="carromCanvas" width="500" height="500"></canvas>
@@ -54,12 +49,11 @@
         <span id="closeRules" class="close-btn">&times;</span>
         <h3>Carrom Rules & Guide</h3>
         <ul>
-          <li><b>Singleplayer:</b> Pocket all pieces for high score.</li>
-          <li><b>Pass & Play (2P):</b> Player 1 (White - 10 pts) vs Player 2 (Black - 10 pts).</li>
+          <li><b>1P vs Computer:</b> Play against an AI opponent. You are White (10 pts), Computer is Black (10 pts).</li>
+          <li><b>Pass & Play (2P):</b> Local 2-Player mode. Player 1 (White) vs Player 2 (Black).</li>
           <li><b>Queen (Red):</b> Worth 50 Points to whoever pockets it.</li>
-          <li><b>Turn Rules (2P):</b> Pocketing your own color gives you another turn. Missing or pocketing opponent's coin switches turn.</li>
-          <li><b>Foul Penalty:</b> Pocketing striker loses <b>10 Points</b> and ends turn.</li>
-          <li><b>Aiming:</b> Drag backward from the striker to set direction and power.</li>
+          <li><b>Turn Rules:</b> Pocketing your assigned color grants another turn. Missing or pocketing an opponent piece switches turns.</li>
+          <li><b>Foul Penalty:</b> Pocketing striker deducts <b>10 Points</b> and ends turn.</li>
         </ul>
       </div>
     </div>
