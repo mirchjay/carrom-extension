@@ -11,6 +11,7 @@ const rulesModal = document.getElementById('rulesModal');
 const closeRules = document.getElementById('closeRules');
 const modeSelect = document.getElementById('modeSelect');
 const turnBadge = document.getElementById('turn-badge');
+const aimAssistBtn = document.getElementById('aimAssistBtn');
 
 const singleBoard = document.getElementById('single-score-board');
 const multiBoard = document.getElementById('multi-score-board');
@@ -31,7 +32,11 @@ let gameState = 'AIMING'; // AIMING, MOVING, GAMEOVER
 let isDragging = false;
 let dragCurrent = { x: 0, y: 0 };
 
-// Track shots
+// Aim Assist State
+let showAimAssist = false;
+let suggestedShot = null;
+
+// Shot Tracking
 let coinsPocketedThisTurn = [];
 let strikerFouledThisTurn = false;
 
@@ -127,6 +132,7 @@ function initGame() {
   p2Score = 0;
   currentPlayer = 1;
   gameState = 'AIMING';
+  suggestedShot = null;
 
   scoreEl.textContent = singleScore;
   p1ScoreEl.textContent = p1Score;
@@ -282,7 +288,7 @@ function evaluateTurn() {
         p1Score += 10;
         if (currentPlayer === 1) extraTurn = true;
       } else if (coin.type === 'black') {
-        p2Score += 10; // Updated: Equal 10 points for black chips in 2P mode
+        p2Score += 10; // Equal 10 points for black pieces in 2P mode
         if (currentPlayer === 2) extraTurn = true;
       }
     });
@@ -290,7 +296,6 @@ function evaluateTurn() {
     p1ScoreEl.textContent = p1Score;
     p2ScoreEl.textContent = p2Score;
 
-    // Switch turns if no valid coin potted or foul occurred
     if (strikerFouledThisTurn || !extraTurn) {
       currentPlayer = (currentPlayer === 1) ? 2 : 1;
     }
@@ -349,6 +354,57 @@ function getAimVector() {
   return { dx, dy, power, angle };
 }
 
+// Calculates optimal trajectory for Aim Assist
+function findBestShot() {
+  const activePieces = pieces.filter(p => p.active);
+  let candidates = activePieces;
+
+  if (gameMode === 'multi') {
+    candidates = activePieces.filter(p => {
+      if (p.type === 'queen') return true;
+      return currentPlayer === 1 ? p.type === 'white' : p.type === 'black';
+    });
+  }
+
+  let bestShot = null;
+  let lowestDifficulty = Infinity;
+
+  candidates.forEach(piece => {
+    pockets.forEach(pocket => {
+      const dxToPocket = pocket.x - piece.x;
+      const dyToPocket = pocket.y - piece.y;
+      const distToPocket = Math.hypot(dxToPocket, dyToPocket);
+      if (distToPocket === 0) return;
+
+      const dirX = dxToPocket / distToPocket;
+      const dirY = dyToPocket / distToPocket;
+
+      const contactDist = COIN_RADIUS + STRIKER_RADIUS;
+      const ghostX = piece.x - dirX * contactDist;
+      const ghostY = piece.y - dirY * contactDist;
+
+      const dxStriker = ghostX - striker.x;
+      const dyStriker = ghostY - striker.y;
+      const distStriker = Math.hypot(dxStriker, dyStriker);
+
+      const strikerDirX = dxStriker / (distStriker || 1);
+      const strikerDirY = dyStriker / (distStriker || 1);
+      const alignment = strikerDirX * dirX + strikerDirY * dirY;
+
+      if (alignment <= 0.15) return; // Skip impossible back-cuts
+
+      const difficulty = distStriker + distToPocket * 0.6 + (1 - alignment) * 250;
+
+      if (difficulty < lowestDifficulty) {
+        lowestDifficulty = difficulty;
+        bestShot = { ghostX, ghostY, piece, pocket };
+      }
+    });
+  });
+
+  return bestShot;
+}
+
 function drawBoard() {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
 
@@ -403,6 +459,42 @@ function drawBoard() {
 
   drawBaseline(400, gameMode === 'single' || currentPlayer === 1);
   drawBaseline(100, gameMode === 'multi' && currentPlayer === 2);
+
+  // Render Aim Assist Line & Ghost Coin
+  if (showAimAssist && gameState === 'AIMING') {
+    suggestedShot = findBestShot();
+
+    if (suggestedShot) {
+      ctx.save();
+
+      // Dotted guide line from striker to target impact point
+      ctx.beginPath();
+      ctx.moveTo(striker.x, striker.y);
+      ctx.lineTo(suggestedShot.ghostX, suggestedShot.ghostY);
+      ctx.strokeStyle = '#2ecc71';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+
+      // Ghost striker circle showing impact point
+      ctx.beginPath();
+      ctx.arc(suggestedShot.ghostX, suggestedShot.ghostY, STRIKER_RADIUS, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(46, 204, 113, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Projected line from piece to pocket
+      ctx.beginPath();
+      ctx.moveTo(suggestedShot.piece.x, suggestedShot.piece.y);
+      ctx.lineTo(suggestedShot.pocket.x, suggestedShot.pocket.y);
+      ctx.strokeStyle = 'rgba(46, 204, 113, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
 
   // Pieces & Striker
   pieces.forEach(p => p.draw());
@@ -485,7 +577,7 @@ strikerSlider.addEventListener('input', (e) => {
   }
 });
 
-// Canvas Mouse Controls
+// Canvas Controls
 canvas.addEventListener('mousedown', (e) => {
   if (gameState !== 'AIMING') return;
   isDragging = true;
@@ -512,8 +604,16 @@ window.addEventListener('mouseup', () => {
 
       gameState = 'MOVING';
       strikerSlider.disabled = true;
+      suggestedShot = null;
     }
   }
+});
+
+// Button Controls
+aimAssistBtn.addEventListener('click', () => {
+  showAimAssist = !showAimAssist;
+  aimAssistBtn.classList.toggle('active', showAimAssist);
+  aimAssistBtn.textContent = showAimAssist ? 'Aim: ON' : 'Aim Assist';
 });
 
 resetBtn.addEventListener('click', () => {
