@@ -1,9 +1,10 @@
 const canvas = document.getElementById('carromCanvas');
 const ctx = canvas.getContext('2d');
-const p1ScoreEl = document.getElementById('p1Score');
-const p2ScoreEl = document.getElementById('p2Score');
+const p1CountEl = document.getElementById('p1Count');
+const p2CountEl = document.getElementById('p2Count');
 const p1LabelEl = document.getElementById('p1Label');
 const p2LabelEl = document.getElementById('p2Label');
+const queenStatusEl = document.getElementById('queenStatus');
 const strikerSlider = document.getElementById('strikerPos');
 const resetBtn = document.getElementById('resetBtn');
 const rulesBtn = document.getElementById('rulesBtn');
@@ -20,9 +21,14 @@ const COIN_RADIUS = 10;
 const STRIKER_RADIUS = 14;
 
 let gameMode = 'single'; // 'single' (1P vs AI) or 'multi' (2P)
-let currentPlayer = 1; // 1 (White, Bottom) or 2 (Black, Top AI/P2)
-let p1Score = 0;
-let p2Score = 0;
+let currentPlayer = 1; // 1 (White, Bottom) or 2 (Black, Top/AI)
+
+let p1PocketedCount = 0; // 0 to 9
+let p2PocketedCount = 0; // 0 to 9
+
+// Queen State Tracker
+let queenPendingCover = null; // Player index (1 or 2) awaiting cover shot
+let queenCoveredBy = null; // Player index (1 or 2) who successfully covered
 
 let gameState = 'AIMING'; // AIMING, MOVING, GAMEOVER
 let isDragging = false;
@@ -33,7 +39,7 @@ let aiThinking = false;
 let showAimAssist = false;
 let suggestedShot = null;
 
-// Turn Tracking
+// Turn Shot Tracking
 let coinsPocketedThisTurn = [];
 let strikerFouledThisTurn = false;
 
@@ -45,7 +51,7 @@ const pockets = [
 ];
 
 class Piece {
-  constructor(x, y, radius, type, color, scoreValue, mass = 1) {
+  constructor(x, y, radius, type, color, mass = 1) {
     this.x = x;
     this.y = y;
     this.vx = 0;
@@ -53,7 +59,6 @@ class Piece {
     this.radius = radius;
     this.type = type; // 'white', 'black', 'queen', 'striker'
     this.color = color;
-    this.scoreValue = scoreValue;
     this.mass = mass;
     this.active = true;
   }
@@ -113,7 +118,10 @@ function getBaselineY() {
   return (currentPlayer === 2) ? 100 : 400;
 }
 
-function updateTurnBadge() {
+function updateUI() {
+  p1CountEl.textContent = `${p1PocketedCount}/9`;
+  p2CountEl.textContent = `${p2PocketedCount}/9`;
+
   if (gameMode === 'single') {
     p1LabelEl.textContent = 'You (White)';
     p2LabelEl.textContent = 'CPU (Black)';
@@ -125,33 +133,63 @@ function updateTurnBadge() {
     turnBadge.textContent = `Player ${currentPlayer}'s Turn (${currentPlayer === 1 ? 'White' : 'Black'})`;
     turnBadge.style.backgroundColor = (currentPlayer === 1) ? '#27ae60' : '#2980b9';
   }
+
+  if (queenCoveredBy !== null) {
+    const owner = (gameMode === 'single' && queenCoveredBy === 2) ? 'CPU' : `P${queenCoveredBy}`;
+    queenStatusEl.textContent = `Covered (${owner})`;
+  } else if (queenPendingCover !== null) {
+    const owner = (gameMode === 'single' && queenPendingCover === 2) ? 'CPU' : `P${queenPendingCover}`;
+    queenStatusEl.textContent = `Cover Pending (${owner})`;
+  } else {
+    queenStatusEl.textContent = 'Center';
+  }
+}
+
+function returnQueenToCenter() {
+  const queen = pieces.find(p => p.type === 'queen');
+  if (!queen) return;
+
+  queen.active = true;
+  queen.vx = 0;
+  queen.vy = 0;
+
+  let targetX = 250;
+  let targetY = 250;
+  let radiusOffset = 0;
+
+  while (pieces.some(p => p !== queen && p.active && Math.hypot(p.x - targetX, p.y - targetY) < COIN_RADIUS * 2)) {
+    radiusOffset += 5;
+    targetX = 250 + radiusOffset;
+  }
+
+  queen.x = targetX;
+  queen.y = targetY;
+  queenPendingCover = null;
 }
 
 function initGame() {
-  p1Score = 0;
-  p2Score = 0;
+  p1PocketedCount = 0;
+  p2PocketedCount = 0;
+  queenPendingCover = null;
+  queenCoveredBy = null;
+
   currentPlayer = 1;
   gameState = 'AIMING';
   suggestedShot = null;
   aiThinking = false;
 
-  p1ScoreEl.textContent = p1Score;
-  p2ScoreEl.textContent = p2Score;
-
   strikerSlider.value = 250;
   strikerSlider.disabled = false;
-
-  updateTurnBadge();
 
   pieces = [];
 
   // Striker
-  striker = new Piece(250, getBaselineY(), STRIKER_RADIUS, 'striker', '#00bfff', 0, 2.2);
+  striker = new Piece(250, getBaselineY(), STRIKER_RADIUS, 'striker', '#00bfff', 2.2);
 
-  // Queen
-  pieces.push(new Piece(250, 250, COIN_RADIUS, 'queen', '#e74c3c', 50, 1.0));
+  // Queen in Center
+  pieces.push(new Piece(250, 250, COIN_RADIUS, 'queen', '#e74c3c', 1.0));
 
-  // Inner ring (6 coins)
+  // Inner ring (6 coins: 3 White, 3 Black)
   const innerColors = ['#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50', '#f5f5dc', '#2c3e50'];
   const innerTypes = ['white', 'black', 'white', 'black', 'white', 'black'];
 
@@ -159,10 +197,10 @@ function initGame() {
     const angle = (i * 60) * Math.PI / 180;
     const x = 250 + Math.cos(angle) * 21;
     const y = 250 + Math.sin(angle) * 21;
-    pieces.push(new Piece(x, y, COIN_RADIUS, innerTypes[i], innerColors[i], 10, 1.0));
+    pieces.push(new Piece(x, y, COIN_RADIUS, innerTypes[i], innerColors[i], 1.0));
   }
 
-  // Outer ring (12 coins)
+  // Outer ring (12 coins: 6 White, 6 Black)
   for (let i = 0; i < 12; i++) {
     const angle = (i * 30 + 15) * Math.PI / 180;
     const x = 250 + Math.cos(angle) * 42;
@@ -172,9 +210,11 @@ function initGame() {
       x, y, COIN_RADIUS,
       isWhite ? 'white' : 'black',
       isWhite ? '#f5f5dc' : '#2c3e50',
-      10, 1.0
+      1.0
     ));
   }
+
+  updateUI();
 }
 
 function resolveCollisions() {
@@ -249,48 +289,104 @@ function checkPockets() {
 }
 
 function evaluateTurn() {
+  const ownType = (currentPlayer === 1) ? 'white' : 'black';
+  const ownCoinsPocketed = coinsPocketedThisTurn.filter(c => c.type === ownType);
+  const queenPocketed = coinsPocketedThisTurn.find(c => c.type === 'queen');
+
   let extraTurn = false;
 
   if (strikerFouledThisTurn) {
-    if (currentPlayer === 1) p1Score = Math.max(0, p1Score - 10);
-    else p2Score = Math.max(0, p2Score - 10);
+    // Return all pocketed coins on foul
+    coinsPocketedThisTurn.forEach(c => {
+      if (c.type === 'queen') {
+        returnQueenToCenter();
+      } else {
+        c.active = true;
+        c.x = 250 + (Math.random() - 0.5) * 40;
+        c.y = 250 + (Math.random() - 0.5) * 40;
+      }
+    });
+
+    if (queenPendingCover === currentPlayer) {
+      returnQueenToCenter();
+    }
+  } else {
+    // Process Pocketed Coins
+    ownCoinsPocketed.forEach(() => {
+      if (currentPlayer === 1) p1PocketedCount++;
+      else p2PocketedCount++;
+    });
+
+    const totalOwnPocketedNow = (currentPlayer === 1) ? p1PocketedCount : p2PocketedCount;
+
+    // 1. Cover Shot Evaluation from previous turn
+    if (queenPendingCover === currentPlayer) {
+      if (ownCoinsPocketed.length > 0) {
+        queenCoveredBy = currentPlayer;
+        queenPendingCover = null;
+        extraTurn = true;
+      } else {
+        returnQueenToCenter(); // Failed to cover
+      }
+    }
+
+    // 2. Queen Pocketed on THIS turn
+    if (queenPocketed) {
+      if (totalOwnPocketedNow === 9 && queenCoveredBy === null) {
+        if (ownCoinsPocketed.length > 0) {
+          queenCoveredBy = currentPlayer;
+          queenPendingCover = null;
+          extraTurn = true;
+        } else {
+          returnQueenToCenter(); // Cannot pocket Queen as last piece without simultaneous cover
+        }
+      } else {
+        if (ownCoinsPocketed.length > 0) {
+          queenCoveredBy = currentPlayer;
+          queenPendingCover = null;
+          extraTurn = true; // Simultaneous cover!
+        } else {
+          queenPendingCover = currentPlayer;
+          extraTurn = true; // Retain turn for cover shot!
+        }
+      }
+    } else if (ownCoinsPocketed.length > 0) {
+      extraTurn = true;
+    }
   }
 
-  coinsPocketedThisTurn.forEach(coin => {
-    if (coin.type === 'queen') {
-      if (currentPlayer === 1) p1Score += 50;
-      else p2Score += 50;
-      extraTurn = true;
-    } else if (coin.type === 'white') {
-      p1Score += 10;
-      if (currentPlayer === 1) extraTurn = true;
-    } else if (coin.type === 'black') {
-      p2Score += 10;
-      if (currentPlayer === 2) extraTurn = true;
-    }
-  });
-
-  p1ScoreEl.textContent = p1Score;
-  p2ScoreEl.textContent = p2Score;
-
+  // Turn Switching
   if (strikerFouledThisTurn || !extraTurn) {
     currentPlayer = (currentPlayer === 1) ? 2 : 1;
   }
 
-  updateTurnBadge();
-
   coinsPocketedThisTurn = [];
   strikerFouledThisTurn = false;
 
-  if (pieces.filter(p => p.active).length === 0) {
+  updateUI();
+
+  // Win Condition
+  const queenResolved = queenCoveredBy !== null;
+  if ((p1PocketedCount === 9 || p2PocketedCount === 9) && queenResolved) {
     gameState = 'GAMEOVER';
   }
 }
 
-// AI Opponent Shot Engine
+// Computer AI Opponent Logic
 function findBestShotForAi() {
   const activePieces = pieces.filter(p => p.active);
-  const candidates = activePieces.filter(p => p.type === 'black' || p.type === 'queen');
+  let candidates = [];
+
+  if (queenPendingCover === 2) {
+    candidates = activePieces.filter(p => p.type === 'black');
+  } else {
+    candidates = activePieces.filter(p => p.type === 'black');
+    if (queenCoveredBy === null && queenPendingCover === null) {
+      const queen = activePieces.find(p => p.type === 'queen');
+      if (queen) candidates.push(queen);
+    }
+  }
+
   if (candidates.length === 0) return null;
 
   let bestShot = null;
@@ -412,12 +508,22 @@ function getAimVector() {
   return { dx, dy, power, angle };
 }
 
+// User Aim Assist Calculation
 function findBestShot() {
   const activePieces = pieces.filter(p => p.active);
-  let candidates = activePieces.filter(p => {
-    if (p.type === 'queen') return true;
-    return currentPlayer === 1 ? p.type === 'white' : p.type === 'black';
-  });
+  const ownType = (currentPlayer === 1) ? 'white' : 'black';
+
+  let candidates = [];
+
+  if (queenPendingCover === currentPlayer) {
+    candidates = activePieces.filter(p => p.type === ownType);
+  } else {
+    candidates = activePieces.filter(p => p.type === ownType);
+    if (queenCoveredBy === null && queenPendingCover === null) {
+      const queen = activePieces.find(p => p.type === 'queen');
+      if (queen) candidates.push(queen);
+    }
+  }
 
   let bestShot = null;
   let lowestDifficulty = Infinity;
@@ -580,14 +686,17 @@ function drawBoard() {
     ctx.font = 'bold 26px Arial';
     ctx.textAlign = 'center';
 
-    let winnerText = "IT'S A TIE!";
-    if (p1Score > p2Score) winnerText = (gameMode === 'single') ? 'YOU WIN!' : 'PLAYER 1 WINS!';
-    else if (p2Score > p1Score) winnerText = (gameMode === 'single') ? 'COMPUTER WINS!' : 'PLAYER 2 WINS!';
+    let winnerText = "GAME OVER";
+    if (p1PocketedCount === 9 && queenCoveredBy !== null) {
+      winnerText = (gameMode === 'single') ? 'YOU WIN!' : 'PLAYER 1 WINS!';
+    } else if (p2PocketedCount === 9 && queenCoveredBy !== null) {
+      winnerText = (gameMode === 'single') ? 'COMPUTER WINS!' : 'PLAYER 2 WINS!';
+    }
 
     ctx.fillText(winnerText, 250, 220);
     ctx.fillStyle = '#fff';
     ctx.font = '18px Arial';
-    ctx.fillText(`White: ${p1Score}  |  Black: ${p2Score}`, 250, 260);
+    ctx.fillText(`White: ${p1PocketedCount}/9  |  Black: ${p2PocketedCount}/9`, 250, 260);
   }
 }
 

@@ -19,10 +19,17 @@
       <div id="turn-badge" class="badge">Your Turn</div>
     </div>
 
-    <!-- Unified Scoreboard -->
+    <!-- Piece Counters & Queen Tracker -->
     <div id="score-board" class="score-board">
-      <span><span id="p1Label">You (White)</span>: <b id="p1Score">0</b></span>
-      <span><span id="p2Label">CPU (Black)</span>: <b id="p2Score">0</b></span>
+      <div class="player-stat">
+        <span id="p1Label">You (White)</span>: <b id="p1Count">0/9</b>
+      </div>
+      <div class="queen-stat">
+        <span>Queen: <b id="queenStatus">Center</b></span>
+      </div>
+      <div class="player-stat">
+        <span id="p2Label">CPU (Black)</span>: <b id="p2Count">0/9</b>
+      </div>
     </div>
 
     <canvas id="carromCanvas" width="500" height="500"></canvas>
@@ -43,17 +50,17 @@
       <strong>How to play:</strong> Drag backward from the striker to aim and set power.
     </p>
 
-    <!-- Rules Modal -->
+    <!-- Official Rules Modal -->
     <div id="rulesModal" class="modal hidden">
       <div class="modal-content">
         <span id="closeRules" class="close-btn">&times;</span>
-        <h3>Carrom Rules & Guide</h3>
+        <h3>Official Carrom Rules</h3>
         <ul>
-          <li><b>1P vs Computer:</b> Play against an AI opponent. You are White (10 pts), Computer is Black (10 pts).</li>
-          <li><b>Pass & Play (2P):</b> Local 2-Player mode. Player 1 (White) vs Player 2 (Black).</li>
-          <li><b>Queen (Red):</b> Worth 50 Points to whoever pockets it.</li>
-          <li><b>Turn Rules:</b> Pocketing your assigned color grants another turn. Missing or pocketing an opponent piece switches turns.</li>
-          <li><b>Foul Penalty:</b> Pocketing striker deducts <b>10 Points</b> and ends turn.</li>
+          <li><b>Objective:</b> Pocket all 9 of your assigned pieces (White or Black) and cover the Queen to win.</li>
+          <li><b>Queen Pocketing:</b> You can pocket the Queen at any time during the match. Sinking the Queen retains your turn so you can attempt the cover shot.</li>
+          <li><b>Covering the Queen:</b> Sinking the Queen requires "covering" it by pocketing one of your assigned pieces either in the same shot or on your immediate next turn.</li>
+          <li><b>Failure to Cover:</b> If you miss or foul on your cover shot, the Queen is returned to the center circle and your turn ends.</li>
+          <li><b>Fouls:</b> Pocketing the striker ends your turn, forfeits any pending Queen cover, and returns pieces pocketed that shot to the board.</li>
         </ul>
       </div>
     </div>
